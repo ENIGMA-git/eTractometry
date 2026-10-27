@@ -6,27 +6,11 @@
 
 
 ## ENIGMA Tractometry Toolbox (eTractometry)
-
 <p align="center">
 <img width="800" alt="workflow" src="resources/eTractometry_workflow.png">
 </p>
 
 The ENIGMA Tractometry Toolbox (eTractometry) is a standardized, end-to-end framework for along-tract analysis of white matter (WM) microstructure in large, multi-site diffusion MRI (dMRI) studies. It combines the ENIGMA Symmetric White Matter Tractography Atlas; automated tractography and bundle segmentation with parameters optimized for heterogeneous acquisition protocols; a quality-control (QC) workflow for registration and segmented bundles; and two complementary tractometry methods, volumetric Medial Tractography Analysis (MeTA) and streamline-based Bundle Analytics (BUAN).
-
-#### Contact: Tractometry team <enigma@ini.usc.edu>
-
-If you use eTractometry, please cite the following publications:
-
-* Iyad Ba Gari, Jonathan D. Alibrando, Yixue Feng, Julio E. Villalón-Reina, Alec Cabalinan, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, Talia M. Nir, and Neda Jahanshad: The ENIGMA Tractometry Toolbox: An End-to-End Tool for Multisite Along-Tract Analyses. The International Society for Tractography (IST 2026)
-
-* Talia M. Nir, Iyad Ba Gari, Yixue Feng, Jonathan D. Alibrando, Alec Cabalinan, Julio E. Villalón-Reina, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, and Neda Jahanshad: The ENIGMA Tractometry Toolbox: An End-to-End Tool for Multisite Along-Tract Analyses. Organization for Human Brain Mapping (OHBM 2026)
-
-* Jonathan D. Alibrando, Iyad Ba Gari, Talia M. Nir, Yixue Feng, Alec Cabalinan, Julio E. Villalón-Reina, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, and Neda Jahanshad: ENIGMA-Tractometry Toolbox With Multi-Level Tractography Quality Control Reveals Along-Tract Age Associations. Society for Neuroscience (SfN 2026)
-
-* Iyad Ba Gari, Jonathan D. Alibrando, Yixue Feng, Julio E. Villalón-Reina, Alec Cabalinan, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, Talia M. Nir, and Neda Jahanshad: ENIGMA Symmetric White Matter Tractography Atlas (Version 1.0.0) [data set]. Zenodo (2026)(https://zenodo.org/records/19656193)
-
-
-
 
 ### Installation
 eTractometry needs Java 17 to 26, Nextflow 26.04 or newer (tested with 26.04.7), Python 3.9 or newer with pandas and nibabel, a container engine (Docker, or Apptainer/Singularity on HPC clusters), and the eTractometry atlas folder (see [The atlas](#the-atlas)).
@@ -38,7 +22,6 @@ conda install -c conda-forge pandas nibabel nextflow
 
 git clone https://github.com/ENIGMA-git/eTractometry.git
 cd eTractometry
-
 ```
 
 ## Usage
@@ -60,7 +43,6 @@ python tract_pipeline.py \
 python tract_pipeline.py ... --profile slurm,apptainer --queue <partition> \
     --container /shared/containers/etractometry_1.0.0.sif
 ```
-
 
 ### Options
 
@@ -92,3 +74,15 @@ python tract_pipeline.py ... --profile slurm,apptainer --queue <partition> \
 - `group_mean/`: cohort mean bundle density maps and renderings.
 
 - `reports/`: Nextflow logs, trace and a log file per task.
+
+#### Contact: Tractometry team <enigma@ini.usc.edu>
+
+If you use eTractometry, please cite the following publications:
+
+* Iyad Ba Gari, Jonathan D. Alibrando, Yixue Feng, Julio E. Villalón-Reina, Alec Cabalinan, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, Talia M. Nir, and Neda Jahanshad: The ENIGMA Tractometry Toolbox: An End-to-End Tool for Multisite Along-Tract Analyses. The International Society for Tractography (IST 2026)
+
+* Talia M. Nir, Iyad Ba Gari, Yixue Feng, Jonathan D. Alibrando, Alec Cabalinan, Julio E. Villalón-Reina, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, and Neda Jahanshad: The ENIGMA Tractometry Toolbox: An End-to-End Tool for Multisite Along-Tract Analyses. Organization for Human Brain Mapping (OHBM 2026)
+
+* Jonathan D. Alibrando, Iyad Ba Gari, Talia M. Nir, Yixue Feng, Alec Cabalinan, Julio E. Villalón-Reina, Christopher R.K. Ching, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, and Neda Jahanshad: ENIGMA-Tractometry Toolbox With Multi-Level Tractography Quality Control Reveals Along-Tract Age Associations. Society for Neuroscience (SfN 2026)
+
+* Iyad Ba Gari, Jonathan D. Alibrando, Yixue Feng, Julio E. Villalón-Reina, Alec Cabalinan, Leila Nabulsi, Paul M. Thompson, Fang-Cheng Yeh, Bramsh Q. Chandio, Talia M. Nir, and Neda Jahanshad: ENIGMA Symmetric White Matter Tractography Atlas (Version 1.0.0) [data set]. Zenodo (2026)(https://zenodo.org/records/19656193)
