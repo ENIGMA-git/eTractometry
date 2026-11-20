@@ -152,8 +152,6 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
             comments[key] = f"{comments[key]} | {comment}" if key in comments else comment
 
     style = f".image-row img {{ display: inline-block; width: {100 / fig_number}%; }}\n.image-row, .error, .blank {{ aspect-ratio: {fig_number if aspect_ratio is None else aspect_ratio}; }}\n"
-    if atlas_path_format is None:
-        style += ".blank { display: none; }\n"
     html_files = [os.path.join(output.format(figure_name=figure_name), f"{figure_name}_{group}.html") for figure_name in figure_names]
 
     for i, figure_name in enumerate(figure_names):
@@ -244,13 +242,13 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
                     pattern = atlas_path_format.format(figure_name=figure_name)
                     with a.div(klass="atlas-class", id="atlas"):
                         write_images(a, sorted(glob(pattern)), pattern, page_dir)
+                    a.div(klass="blank snap")
                 if mean_path_format is not None:
                     pattern = mean_path_format.format(figure_name=figure_name)
                     if mean_source_path_format is None:
                         mean_figures = sorted(glob(pattern))
                     else:
                         mean_figures = [os.path.join(os.path.dirname(pattern), os.path.basename(figure)) for figure in sorted(glob(mean_source_path_format.format(figure_name=figure_name)))]
-                    a.div(klass="blank").div(klass="snap")
                     with a.div(klass="snap", id="dataset").div(klass="subject-section"):
                         with a.div(klass="subject-header"):
                             a.h1(_t=group, title=group)
@@ -1247,7 +1245,6 @@ function applySubjectFilter(subject) {
     let cached = qcCache[subject];
     let isVisible = subjectFilterAllows(subject);
     cached.snap.style.display = isVisible ? "" : "none";
-    cached.blank.style.display = isVisible && document.getElementById("atlas-mode")?.checked ? "" : "none";
 }
 
 function updateStatusFilterSummary() {
@@ -1267,8 +1264,7 @@ function applyStatusFilters() {
 }
 
 function setAtlasMode(showAtlas) {
-    document.getElementById("atlas").style.display = showAtlas ? "" : "none";
-    for (let blank of document.getElementsByClassName("blank")) blank.style.display = showAtlas ? "" : "none";
+    for (let el of document.querySelectorAll("#atlas, .blank")) el.style.display = showAtlas ? "" : "none";
     document.body.style.marginBottom = showAtlas ? "100vh" : "0";
     applyStatusFilters();
 }
@@ -1278,7 +1274,7 @@ function toggleAtlas(el) {
     for (let section of document.querySelectorAll("#subjects-container .subject-section")) {
         let rect = section.getBoundingClientRect();
         if ((rect.width > 0 || rect.height > 0) && rect.top >= 0 && rect.top < window.innerHeight) {
-            anchor = { element: section, offset: rect.top - rect.height };
+            anchor = { element: section, offset: rect.top };
             break;
         }
     }
@@ -1301,13 +1297,11 @@ function updateHighlight(subject) {
 
 function renderSubject([subject, pattern, figures, isOutlier], index) {
     let row = qcRowsBySubject[subject];
-    let blank = makeElement("div", { class: "blank" });
     let snap = makeElement("div", { class: "snap", id: subject });
     let section = makeElement("div", { class: "subject-section" });
     let header = makeElement("div", { class: "subject-header" });
     let title = makeElement("h1", { title: subject });
     let flag = makeElement("h2", { class: "qc-flag" });
-    blank.appendChild(makeElement("div", { class: "snap" }));
     title.appendChild(makeElement("span", { class: "subject-name-text" }, subject));
     header.appendChild(title);
     if (isOutlier) header.appendChild(makeElement("h2", { class: "outlier-indicator", title: "Automatically detected outlier" }, "‼️ Outlier ‼️"));
@@ -1352,9 +1346,9 @@ function renderSubject([subject, pattern, figures, isOutlier], index) {
     section.appendChild(controlPanel);
     snap.appendChild(section);
 
-    qcCache[subject] = { isOutlier, blank, snap, section, flag, reasonSelect, commentInput, buttons: [...buttons.children] };
+    qcCache[subject] = { isOutlier, snap, section, flag, reasonSelect, commentInput, buttons: [...buttons.children] };
     updateHighlight(subject);
-    return [blank, snap];
+    return snap;
 }
 
 function getBatchCount() {
@@ -1393,7 +1387,7 @@ function renderBatch(batchIndex) {
         empty.appendChild(makeElement("div", { class: "subject-header" }, "No subjects"));
         container.replaceChildren(empty);
     } else {
-        container.replaceChildren(...subjectManifest.slice(start, start + activeBatchSize).flatMap((entry, i) => renderSubject(entry, start + i)));
+        container.replaceChildren(...subjectManifest.slice(start, start + activeBatchSize).map((entry, i) => renderSubject(entry, start + i)));
     }
 
     updateBatchControls();
