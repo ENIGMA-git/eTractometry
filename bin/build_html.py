@@ -203,8 +203,9 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
                         a.h2(_t="Load QC CSV")
                         a.p(_t="Before you can QC, you must load the designated file:")
                         a.code(_t=csv_href)
+                        a.p(_t="In Chrome or Edge, choose its folder or a parent folder (e.g. QC_HTML) once to load it automatically next time.")
                         a.p(id="csv-load-message", klass="csv-load-message")
-                        a.button(_t="Choose CSV", type="button", onclick="loadRequiredQCCSV()")
+                        a.button(_t="Load CSV", type="button", onclick="loadRequiredQCCSV()")
 
                 ## Top bar with batch size, filters and the atlas overlay switch:
                 with a.div(klass="top-bar"):
@@ -1096,17 +1097,65 @@ function hideRequiredCSVPrompt() {
     prompt.setAttribute("aria-hidden", "true");
 }
 
-async function readCSVFromUser() {
-    if (window.showOpenFilePicker) {
+// Chrome and Edge remember the chosen folder, so its CSVs load automatically next time:
+const qcCSVPath = decodeURIComponent(new URL(getVisualQCCSVPath(), location.href).pathname).split("/");
+
+function qcFolderStore(mode, action) {
+    return new Promise((resolve, reject) => {
+        let open = indexedDB.open("visual-qc", 1);
+        open.onupgradeneeded = () => open.result.createObjectStore("folders");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+            let request = action(open.result.transaction("folders", mode).objectStore("folders"));
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        };
+    });
+}
+
+async function findCSVInFolder(folder, depth) {
+    try {
+        for (let name of qcCSVPath.slice(depth + 1, -1)) folder = await folder.getDirectoryHandle(name);
+        return await folder.getFileHandle(qcCSVPath.at(-1));
+    } catch {
+        return null;
+    }
+}
+
+async function openCSVFromFolder(userAction) {
+    let options = { mode: "readwrite" };
+    for (let depth = qcCSVPath.length - 2; depth > 0; depth--) {
+        let folder = await qcFolderStore("readonly", store => store.get(qcCSVPath.slice(0, depth + 1).join("/")));
+        let granted = folder && (await folder.queryPermission(options) === "granted" || userAction && await folder.requestPermission(options) === "granted");
+        let fileHandle = granted && await findCSVInFolder(folder, depth);
+        if (fileHandle) return fileHandle;
+    }
+    if (!userAction) return null;
+    let folder = await window.showDirectoryPicker({ id: "visual-qc-csv", mode: "readwrite" });
+    for (let depth = qcCSVPath.length - 2; depth > 0; depth--) {
+        let fileHandle = folder.name === qcCSVPath[depth] && await findCSVInFolder(folder, depth);
+        if (fileHandle) {
+            await qcFolderStore("readwrite", store => store.put(folder, qcCSVPath.slice(0, depth + 1).join("/")));
+            return fileHandle;
+        }
+    }
+    alert(`Choose the folder that contains ${qcCSVPath.at(-1)}, or one of its parent folders.`);
+    return null;
+}
+
+async function readCSVFromUser(userAction) {
+    if (window.showDirectoryPicker) {
         try {
-            let [fileHandle] = await window.showOpenFilePicker({ id: "visual-qc-csv", types: csvFileTypes });
+            let fileHandle = await openCSVFromFolder(userAction);
+            if (!fileHandle) return null;
             let file = await fileHandle.getFile();
             return { text: await file.text(), name: file.name, fileHandle };
         } catch (err) {
             if (err.name === "AbortError") return null;
-            console.warn("File picker load failed; falling back to file input.", err);
+            console.warn("Folder access failed.", err);
         }
     }
+    if (!userAction) return null;
     return new Promise(resolve => {
         let input = makeElement("input", { type: "file", accept: ".csv,text/csv" });
         input.addEventListener("change", async () => resolve({ text: await input.files[0].text(), name: input.files[0].name, fileHandle: null }));
@@ -1115,13 +1164,13 @@ async function readCSVFromUser() {
     });
 }
 
-async function loadRequiredQCCSV() {
-    let loaded = await readCSVFromUser();
+async function loadRequiredQCCSV(userAction=true) {
+    let loaded = await readCSVFromUser(userAction);
     let rows = loaded ? parseCSV(loaded.text) : [];
     let validationError = loaded ? validateFullCSVRows(rows, loaded.name) : "";
     if (validationError) alert(validationError);
     if (!loaded || validationError) {
-        showRequiredCSVPrompt("CSV not loaded. Choose the designated file to begin QC.");
+        if (userAction) showRequiredCSVPrompt("CSV not loaded. Choose the designated file to begin QC.");
         return false;
     }
 
@@ -1435,6 +1484,7 @@ window.onload = () => {
     setFullCSVRows(embeddedCSVRows);
     renderBatch(0);
     showRequiredCSVPrompt();
+    loadRequiredQCCSV(false);
 };
 """
 
