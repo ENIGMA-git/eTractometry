@@ -58,6 +58,7 @@ python tract_pipeline.py ... --profile slurm,apptainer --queue <partition> \
 | `--max_cpus`, `--max_memory` | Upper limits (CPUs, GB) per task and, for `local`, for all tasks at once. With `local,docker` they default to the Docker VM's resources (Docker Desktop); otherwise Nextflow uses the CPUs and memory it detects. |
 | `--n_parallel` | Maximum queued or running jobs (default 600). |
 | `--methods` | `meta`, `buan`, `meta,buan`, or `none`. |
+| `--bundles` | A category from `configs/bundles.config` (default `primary`), `all`, or comma-separated bundle groups or bundles by name or name prefix, e.g. `Association`, `Association_Cingulum`. |
 | `--metrics` | DSI-Studio GQI maps to export and profile. |
 | `--similarity_percentile` | Percentiles for the atlas-similarity scores (50 is always included). |
 | `--full_reports`, `--ansi_log`, `--print_logs` | Nextflow reports, live progress log, and run history. |
