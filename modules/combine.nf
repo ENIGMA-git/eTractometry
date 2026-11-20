@@ -105,7 +105,7 @@ process CHECK_RUN_COMPLETENESS {
     val  wait_for_buan
     val  output_dir
     path input_csv
-    path bundle_list
+    val  bundles
     val  dataset
 
     output:
@@ -114,10 +114,12 @@ process CHECK_RUN_COMPLETENESS {
 
     script:
     """
+    printf '%s\\n' ${bundles.join(' ')} > _bundles.txt
+
     check_run_completeness.py \\
         --output_dir "${output_dir}" \\
         --subjects   "${input_csv}" \\
-        --bundles    "${bundle_list}" \\
+        --bundles    _bundles.txt \\
         --dataset    "${dataset}" \\
         --output_csv "./${dataset}_run_completeness.csv" \\
         --output_txt "./${dataset}_run_completeness.txt"
