@@ -19,9 +19,14 @@ params {
     mni_qa_template_2mm:  Path
     bundle_atlas_dir:     Path
     atlas_bundle_pngs:    Path
-    dsi_studio_bin:       String = ''
-    python_env:           String = ''
+    dsi_studio:           String = ''
+    conda_env:            String = ''
     similarity_percentile: String = '50'
+    bundle_selection:     String = 'primary'
+}
+
+def selects(token, group, cfg, bundle) {
+    return token in ['all', cfg.category] || [group, bundle].any { name -> name == token || name.startsWith(token + '_') }
 }
 
 workflow {
@@ -53,11 +58,14 @@ workflow {
             def dwi      = file(row.dwi).toRealPath()
             def is_sz    = row.dwi.toString().endsWith('.sz')
             def has_mask = row.mask ? true : false
+            def has_b_table = row.b_table ? true : false
             tuple(
                 row.subject,
                 is_sz,
-                is_sz ? dwi : file(row.bval).toRealPath(),
-                is_sz ? dwi : file(row.bvec).toRealPath(),
+                is_sz || has_b_table ? dwi : file(row.bval).toRealPath(),
+                is_sz || has_b_table ? dwi : file(row.bvec).toRealPath(),
+                has_b_table ? file(row.b_table).toRealPath() : dwi,
+                has_b_table,
                 dwi,
                 has_mask ? file(row.mask).toRealPath() : dwi,
                 has_mask,
@@ -80,11 +88,20 @@ workflow {
         .fromPath('atlas/mean_density_map/*/HCP1065.*.mask.{1,2}mm.nii.gz')
         .map { f -> tuple(f.parent.name, file(f)) }
         .groupTuple()
-        //                                              → (bundle, [refs_dm files])
 
-    bundle_group_configs = channel.from(params.bundles.values())
+    // --bundles : all, a category, or bundle group / bundle names or name prefixes
+    def selection = params.bundle_selection.tokenize(',').collect { t -> t.trim() }
+    def unknown = selection.findAll { t -> !params.bundles.any { group, cfg -> cfg.bundles.any { b -> selects(t, group, cfg, b) } } }
+    if (unknown) {
+        error "Unknown --bundles '${unknown.join(', ')}'. Use all, a category, or bundle group or bundle names (or name prefixes) from configs/bundles.config."
+    }
+    def selected_groups = params.bundles
+        .collect { group, cfg -> cfg + [bundles: cfg.bundles.findAll { b -> selection.any { t -> selects(t, group, cfg, b) } }] }
+        .findAll { cfg -> cfg.bundles }
 
-    bundle_configs = channel.from(params.bundles.values())
+    bundle_group_configs = channel.from(selected_groups)
+
+    bundle_configs = channel.from(selected_groups)
         .flatMap { row ->
             def cfg = row.subMap(row.keySet() - 'bundles')
             row.bundles.collect { b -> tuple(cfg, b) }
@@ -148,7 +165,7 @@ workflow {
         TRACTOMETRY.out.buan_qc_pngs.collect().ifEmpty([]),
         params.output_dir,
         file(params.input_csv),
-        file("${params.bundle_atlas_dir}/human.txt"),
+        selected_groups.collectMany { cfg -> cfg.bundles },
         params.dataset
     )
 }

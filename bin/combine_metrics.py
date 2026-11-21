@@ -9,8 +9,8 @@ from collections import defaultdict
 DEFAULT_METRICS = ["dti_fa", "md", "ad", "rd", "qa", "gfa", "iso", "rdi", "qir", "rd1", "rd2", "nrdi02L", "nrdi04L"]
 
 def parse_meta_profile(stem, metrics):
-    # <subject>_<bundle>_<metric>_segments_average_local_<roi>
-    m = re.match(r"^(.+)_segments_average_local_(all|core)$", stem)
+    # <subject>_<bundle>_<metric>_segments_average_<roi>, roi: local_all, local_core, global_all or global_core
+    m = re.match(r"^(.+)_segments_average_((?:local|global)_(?:all|core))$", stem)
     if not m:
         return None
     for metric in sorted(metrics, key=len, reverse=True):
@@ -98,7 +98,7 @@ def main():
 
         if args.mode == "meta_profile":
             metric, roi = key
-            out = out_dir / f"{prefix}MeTA_{metric}_local_{roi}.csv"
+            out = out_dir / f"{prefix}MeTA_{metric}_{roi}.csv"
         elif args.mode == "buan_profile":
             (metric,) = key
             out = out_dir / f"{prefix}BUAN_{metric}.csv"

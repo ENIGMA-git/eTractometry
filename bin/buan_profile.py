@@ -525,8 +525,7 @@ def main():
         format="%(asctime)s [%(levelname)s] [%(name)s:%(module)s.%(funcName)s]: %(message)s",
         datefmt='%H:%M:%S',
     )
-    parser = argparse.ArgumentParser(
-        description='Along-tract BUAN profile extraction',
+    parser = argparse.ArgumentParser(description='Along-tract BUAN profile extraction',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 

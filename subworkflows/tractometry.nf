@@ -114,7 +114,7 @@ workflow TRACTOMETRY {
             .flatten()
             .map { csv ->
                 def stem = csv.simpleName
-                def m    = (stem =~ /^(.+)_segments_average_local_(all|core)$/)
+                def m    = (stem =~ /^(.+)_segments_average_((?:local|global)_(?:all|core))$/)
                 if (!m) return null
                 def stripped = m[0][1]
                 def roi      = m[0][2]

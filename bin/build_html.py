@@ -152,8 +152,6 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
             comments[key] = f"{comments[key]} | {comment}" if key in comments else comment
 
     style = f".image-row img {{ display: inline-block; width: {100 / fig_number}%; }}\n.image-row, .error, .blank {{ aspect-ratio: {fig_number if aspect_ratio is None else aspect_ratio}; }}\n"
-    if atlas_path_format is None:
-        style += ".blank { display: none; }\n"
     html_files = [os.path.join(output.format(figure_name=figure_name), f"{figure_name}_{group}.html") for figure_name in figure_names]
 
     for i, figure_name in enumerate(figure_names):
@@ -205,8 +203,9 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
                         a.h2(_t="Load QC CSV")
                         a.p(_t="Before you can QC, you must load the designated file:")
                         a.code(_t=csv_href)
+                        a.p(_t="In Chrome or Edge, choose its folder or a parent folder (e.g. QC_HTML) once to load it automatically next time.")
                         a.p(id="csv-load-message", klass="csv-load-message")
-                        a.button(_t="Choose CSV", type="button", onclick="loadRequiredQCCSV()")
+                        a.button(_t="Load CSV", type="button", onclick="loadRequiredQCCSV()")
 
                 ## Top bar with batch size, filters and the atlas overlay switch:
                 with a.div(klass="top-bar"):
@@ -244,13 +243,13 @@ def build_html(output, figures_path_format, figure_names, group, subjects, atlas
                     pattern = atlas_path_format.format(figure_name=figure_name)
                     with a.div(klass="atlas-class", id="atlas"):
                         write_images(a, sorted(glob(pattern)), pattern, page_dir)
+                    a.div(klass="blank snap")
                 if mean_path_format is not None:
                     pattern = mean_path_format.format(figure_name=figure_name)
                     if mean_source_path_format is None:
                         mean_figures = sorted(glob(pattern))
                     else:
                         mean_figures = [os.path.join(os.path.dirname(pattern), os.path.basename(figure)) for figure in sorted(glob(mean_source_path_format.format(figure_name=figure_name)))]
-                    a.div(klass="blank").div(klass="snap")
                     with a.div(klass="snap", id="dataset").div(klass="subject-section"):
                         with a.div(klass="subject-header"):
                             a.h1(_t=group, title=group)
@@ -1098,17 +1097,65 @@ function hideRequiredCSVPrompt() {
     prompt.setAttribute("aria-hidden", "true");
 }
 
-async function readCSVFromUser() {
-    if (window.showOpenFilePicker) {
+// Chrome and Edge remember the chosen folder, so its CSVs load automatically next time:
+const qcCSVPath = decodeURIComponent(new URL(getVisualQCCSVPath(), location.href).pathname).split("/");
+
+function qcFolderStore(mode, action) {
+    return new Promise((resolve, reject) => {
+        let open = indexedDB.open("visual-qc", 1);
+        open.onupgradeneeded = () => open.result.createObjectStore("folders");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+            let request = action(open.result.transaction("folders", mode).objectStore("folders"));
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        };
+    });
+}
+
+async function findCSVInFolder(folder, depth) {
+    try {
+        for (let name of qcCSVPath.slice(depth + 1, -1)) folder = await folder.getDirectoryHandle(name);
+        return await folder.getFileHandle(qcCSVPath.at(-1));
+    } catch {
+        return null;
+    }
+}
+
+async function openCSVFromFolder(userAction) {
+    let options = { mode: "readwrite" };
+    for (let depth = qcCSVPath.length - 2; depth > 0; depth--) {
+        let folder = await qcFolderStore("readonly", store => store.get(qcCSVPath.slice(0, depth + 1).join("/")));
+        let granted = folder && (await folder.queryPermission(options) === "granted" || userAction && await folder.requestPermission(options) === "granted");
+        let fileHandle = granted && await findCSVInFolder(folder, depth);
+        if (fileHandle) return fileHandle;
+    }
+    if (!userAction) return null;
+    let folder = await window.showDirectoryPicker({ id: "visual-qc-csv", mode: "readwrite" });
+    for (let depth = qcCSVPath.length - 2; depth > 0; depth--) {
+        let fileHandle = folder.name === qcCSVPath[depth] && await findCSVInFolder(folder, depth);
+        if (fileHandle) {
+            await qcFolderStore("readwrite", store => store.put(folder, qcCSVPath.slice(0, depth + 1).join("/")));
+            return fileHandle;
+        }
+    }
+    alert(`Choose the folder that contains ${qcCSVPath.at(-1)}, or one of its parent folders.`);
+    return null;
+}
+
+async function readCSVFromUser(userAction) {
+    if (window.showDirectoryPicker) {
         try {
-            let [fileHandle] = await window.showOpenFilePicker({ id: "visual-qc-csv", types: csvFileTypes });
+            let fileHandle = await openCSVFromFolder(userAction);
+            if (!fileHandle) return null;
             let file = await fileHandle.getFile();
             return { text: await file.text(), name: file.name, fileHandle };
         } catch (err) {
             if (err.name === "AbortError") return null;
-            console.warn("File picker load failed; falling back to file input.", err);
+            console.warn("Folder access failed.", err);
         }
     }
+    if (!userAction) return null;
     return new Promise(resolve => {
         let input = makeElement("input", { type: "file", accept: ".csv,text/csv" });
         input.addEventListener("change", async () => resolve({ text: await input.files[0].text(), name: input.files[0].name, fileHandle: null }));
@@ -1117,13 +1164,13 @@ async function readCSVFromUser() {
     });
 }
 
-async function loadRequiredQCCSV() {
-    let loaded = await readCSVFromUser();
+async function loadRequiredQCCSV(userAction=true) {
+    let loaded = await readCSVFromUser(userAction);
     let rows = loaded ? parseCSV(loaded.text) : [];
     let validationError = loaded ? validateFullCSVRows(rows, loaded.name) : "";
     if (validationError) alert(validationError);
     if (!loaded || validationError) {
-        showRequiredCSVPrompt("CSV not loaded. Choose the designated file to begin QC.");
+        if (userAction) showRequiredCSVPrompt("CSV not loaded. Choose the designated file to begin QC.");
         return false;
     }
 
@@ -1247,7 +1294,6 @@ function applySubjectFilter(subject) {
     let cached = qcCache[subject];
     let isVisible = subjectFilterAllows(subject);
     cached.snap.style.display = isVisible ? "" : "none";
-    cached.blank.style.display = isVisible && document.getElementById("atlas-mode")?.checked ? "" : "none";
 }
 
 function updateStatusFilterSummary() {
@@ -1267,8 +1313,7 @@ function applyStatusFilters() {
 }
 
 function setAtlasMode(showAtlas) {
-    document.getElementById("atlas").style.display = showAtlas ? "" : "none";
-    for (let blank of document.getElementsByClassName("blank")) blank.style.display = showAtlas ? "" : "none";
+    for (let el of document.querySelectorAll("#atlas, .blank")) el.style.display = showAtlas ? "" : "none";
     document.body.style.marginBottom = showAtlas ? "100vh" : "0";
     applyStatusFilters();
 }
@@ -1278,7 +1323,7 @@ function toggleAtlas(el) {
     for (let section of document.querySelectorAll("#subjects-container .subject-section")) {
         let rect = section.getBoundingClientRect();
         if ((rect.width > 0 || rect.height > 0) && rect.top >= 0 && rect.top < window.innerHeight) {
-            anchor = { element: section, offset: rect.top - rect.height };
+            anchor = { element: section, offset: rect.top };
             break;
         }
     }
@@ -1301,13 +1346,11 @@ function updateHighlight(subject) {
 
 function renderSubject([subject, pattern, figures, isOutlier], index) {
     let row = qcRowsBySubject[subject];
-    let blank = makeElement("div", { class: "blank" });
     let snap = makeElement("div", { class: "snap", id: subject });
     let section = makeElement("div", { class: "subject-section" });
     let header = makeElement("div", { class: "subject-header" });
     let title = makeElement("h1", { title: subject });
     let flag = makeElement("h2", { class: "qc-flag" });
-    blank.appendChild(makeElement("div", { class: "snap" }));
     title.appendChild(makeElement("span", { class: "subject-name-text" }, subject));
     header.appendChild(title);
     if (isOutlier) header.appendChild(makeElement("h2", { class: "outlier-indicator", title: "Automatically detected outlier" }, "‼️ Outlier ‼️"));
@@ -1352,9 +1395,9 @@ function renderSubject([subject, pattern, figures, isOutlier], index) {
     section.appendChild(controlPanel);
     snap.appendChild(section);
 
-    qcCache[subject] = { isOutlier, blank, snap, section, flag, reasonSelect, commentInput, buttons: [...buttons.children] };
+    qcCache[subject] = { isOutlier, snap, section, flag, reasonSelect, commentInput, buttons: [...buttons.children] };
     updateHighlight(subject);
-    return [blank, snap];
+    return snap;
 }
 
 function getBatchCount() {
@@ -1393,7 +1436,7 @@ function renderBatch(batchIndex) {
         empty.appendChild(makeElement("div", { class: "subject-header" }, "No subjects"));
         container.replaceChildren(empty);
     } else {
-        container.replaceChildren(...subjectManifest.slice(start, start + activeBatchSize).flatMap((entry, i) => renderSubject(entry, start + i)));
+        container.replaceChildren(...subjectManifest.slice(start, start + activeBatchSize).map((entry, i) => renderSubject(entry, start + i)));
     }
 
     updateBatchControls();
@@ -1441,6 +1484,7 @@ window.onload = () => {
     setFullCSVRows(embeddedCSVRows);
     renderBatch(0);
     showRequiredCSVPrompt();
+    loadRequiredQCCSV(false);
 };
 """
 

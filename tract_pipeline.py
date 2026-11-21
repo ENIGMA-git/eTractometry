@@ -24,14 +24,16 @@ def parse_args():
     parser.add_argument("--mask", help="Brain mask path. Required for NIfTI DWI; optional for .sz, where DSI-Studio creates one.")
     parser.add_argument("--bval", help="b-value file (FSL format) path. Required for NIfTI DWI.")
     parser.add_argument("--bvec", help="b-vector file (FSL format gradient directions) path. Required for NIfTI DWI.")
+    parser.add_argument("--b_table", help="DSI-Studio b-table path (b-value and x y z per volume). Used instead of --bval/--bvec when given.")
 
     parser.add_argument("--profile", help="Comma-separated Nextflow profiles: one executor (local, sge, slurm, pbs, pbspro, lsf), and one engine that provides DSI-Studio and the Python tools (conda, apptainer, hybrid) e.g. local,conda.")
     parser.add_argument("--queue", help="Cluster queue. Required for cluster executors.")
     parser.add_argument("--n_parallel", type=int, default=600, help="Maximum number of queued or running jobs")
-    parser.add_argument("--dsi_studio_bin", help="Path to the DSI-Studio executable. Required with the conda engine.")
-    parser.add_argument("--python_env", help="Path to the conda environment with the Python tools (meta, dive, ...). Required with the conda and hybrid engines.")
+    parser.add_argument("--dsi_studio", help="Path to the DSI-Studio executable. Required with the conda engine.")
+    parser.add_argument("--conda_env", help="Path to the conda environment with the Python packages. Required with the conda and hybrid engines.")
 
     parser.add_argument("--methods", default="meta", help="Comma-separated tractometry methods: meta (Medial Tractography Analysis), buan (Bundle Analytics), or none to stop after diffusion modeling and bundle segmentation.")
+    parser.add_argument("--bundles", default="primary", help="Comma-separated bundles to run: a category from configs/bundles.config (default primary), all, or bundle group or bundle names or name prefixes, e.g. Association, Association_Cingulum, Association_ArcuateFasciculusL.")
     parser.add_argument("--metrics", default="dti_fa,md,ad,rd,qa,gfa,iso,rdi,qir,rd1,rd2,nrdi02L,nrdi04L", help="Comma-separated diffusion metric maps exported from the DSI-Studio GQI model.")
     parser.add_argument("--extra_maps", nargs="+", help="Extra subject-space metric maps (e.g. NODDI) sampled along each bundle with the --metrics maps, as name=path pattern pairs, e.g. icvf=/data/{subject}_icvf.nii.gz odi=/data/{subject}_odi.nii.gz.")
     parser.add_argument("--similarity_percentile", default="50", help="Comma-separated percentile thresholds in [0, 100] applied to each subject's MNI-space bundle density map before comparing it with the HCP1065 atlas bundle; 50 is always included.")
@@ -43,7 +45,7 @@ def parse_args():
     parser.add_argument("--clean", action="store_true", help="Remove all Nextflow files of the latest run, including logs and cache, and exit.")
     args = parser.parse_args()
 
-    for name in ("output_dir", "subjects", "dwi", "mask", "bval", "bvec", "dsi_studio_bin", "python_env"):
+    for name in ("output_dir", "subjects", "dwi", "mask", "bval", "bvec", "b_table", "dsi_studio", "conda_env"):
         if getattr(args, name) is not None:
             setattr(args, name, os.path.abspath(getattr(args, name)))
     if shutil.which("nextflow") is None:
@@ -56,8 +58,8 @@ def parse_args():
         parser.error(f"the following arguments are required: {', '.join(missing)}")
     if not args.dwi.endswith((".nii", ".nii.gz", ".sz")):
         parser.error("--dwi must be a NIfTI (.nii / .nii.gz) or DSI-Studio source (.sz) path.")
-    if not args.dwi.endswith(".sz") and None in (args.mask, args.bval, args.bvec):
-        parser.error("--mask, --bval and --bvec are required for NIfTI input.")
+    if not args.dwi.endswith(".sz") and (args.mask is None or (args.b_table is None and None in (args.bval, args.bvec))):
+        parser.error("--mask and either --b_table or --bval/--bvec are required for NIfTI input.")
 
     profiles = args.profile.split(",")
     executors = [p for p in profiles if p in ("local", "sge", "slurm", "pbs", "pbspro", "lsf")]
@@ -67,14 +69,14 @@ def parse_args():
     executor, engine = executors[0], engines[0]
     if executor != "local" and args.queue is None:
         parser.error(f"--queue is required with the {executor} executor.")
-    if engine in ("conda", "hybrid") and args.python_env is None:
-        parser.error(f"--python_env is required with the {engine} engine.")
-    if engine == "conda" and args.dsi_studio_bin is None:
-        parser.error("--dsi_studio_bin is required with the conda engine.")
-    if args.python_env is not None and not os.path.isdir(args.python_env):
-        parser.error(f"--python_env directory not found: {args.python_env}")
-    if args.dsi_studio_bin is not None and shutil.which(args.dsi_studio_bin) is None:
-        parser.error(f"--dsi_studio_bin is not an executable file: {args.dsi_studio_bin}")
+    if engine in ("conda", "hybrid") and args.conda_env is None:
+        parser.error(f"--conda_env is required with the {engine} engine.")
+    if engine == "conda" and args.dsi_studio is None:
+        parser.error("--dsi_studio is required with the conda engine.")
+    if args.conda_env is not None and not os.path.isdir(args.conda_env):
+        parser.error(f"--conda_env directory not found: {args.conda_env}")
+    if args.dsi_studio is not None and shutil.which(args.dsi_studio) is None:
+        parser.error(f"--dsi_studio is not an executable file: {args.dsi_studio}")
 
     if args.n_parallel < 1:
         parser.error("--n_parallel must be a positive integer.")
@@ -113,7 +115,7 @@ def main():
     os.environ["NXF_LOG_FILE"] = f"{reports_dir}/logs/nextflow_log_{timestamp}.txt"
     os.environ["NXF_CACHE_DIR"] = f"{args.output_dir}/.nextflow_cache"
 
-    ## main.nf reads atlas/ relative to the launch directory:
+    ## main.nf reads atlas/ relative:
     os.chdir(pipeline_dir)
 
     if args.print_logs:
@@ -123,12 +125,11 @@ def main():
         select.select([sys.stdin], [], [], 10)
         os.execvp("nextflow", ["nextflow", "clean", "-f"])
 
-    ## Rebuild the input CSV on every run so added or removed subjects are picked up:
     input_csv = f"{args.output_dir}/spreadsheets/{args.dataset}_input_data.csv"
     os.makedirs(os.path.dirname(input_csv), exist_ok=True)
-    python = sys.executable if args.python_env is None else f"{args.python_env}/bin/python"
+    python = sys.executable if args.conda_env is None else f"{args.conda_env}/bin/python"
     csv_cmd = [python, "bin/get_dMRI_data.py", "--subject_IDs", args.subjects, "--dwi_format", args.dwi, "--output", input_csv]
-    for name in ("mask", "bval", "bvec"):
+    for name in ("mask", "bval", "bvec", "b_table"):
         if getattr(args, name) is not None:
             csv_cmd += [f"--{name}_format", getattr(args, name)]
     if args.extra_maps is not None:
@@ -136,6 +137,9 @@ def main():
     logging.info(f"Collecting input files for subjects in {args.subjects}")
     if subprocess.run(csv_cmd).returncode != 0:
         sys.exit("Failed to collect the input files.")
+
+    atlas_pngs_dir = f"{args.output_dir}/QC_HTML/atlas_pngs"
+    shutil.copytree(f"{pipeline_dir}/atlas/full/pngs", atlas_pngs_dir, dirs_exist_ok=True)
 
     ## Launch Nextflow:
     nf_cmd = ["nextflow", "run", "main.nf", "-profile", args.profile, "-queue-size", str(args.n_parallel), "-ansi-log", str(args.ansi_log).lower(),
@@ -151,6 +155,7 @@ def main():
         "output_dir": args.output_dir,
         "dataset": args.dataset,
         "methods": args.methods,
+        "bundle_selection": args.bundles,
         "metrics": args.metrics,
         "extra_maps": None if args.extra_maps is None else ",".join(args.extra_maps),
         "similarity_percentile": args.similarity_percentile,
@@ -159,10 +164,10 @@ def main():
         "cortical_atlas_mni": f"{pipeline_dir}/atlas/HCP-MMP.nii.gz",
         "mni_qa_template_1mm": f"{pipeline_dir}/atlas/human_qa.1mm.nii.gz",
         "mni_qa_template_2mm": f"{pipeline_dir}/atlas/human_qa.2mm.nii.gz",
-        "atlas_bundle_pngs": f"{pipeline_dir}/atlas/full/pngs",
+        "atlas_bundle_pngs": atlas_pngs_dir,
         "bundle_atlas_dir": f"{pipeline_dir}/atlas/sparse",
-        "dsi_studio_bin": args.dsi_studio_bin,
-        "python_env": args.python_env
+        "dsi_studio": args.dsi_studio,
+        "conda_env": args.conda_env
     }
     for name, value in params.items():
         if value is not None:

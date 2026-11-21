@@ -1,3 +1,4 @@
 .DS_Store
-atlas
 bin/dsistudio.sif
+run_script
+test

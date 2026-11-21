@@ -35,7 +35,7 @@ process SEGMENT_BUNDLES {
     
     # segment bundles for subject (group key: ${cfg.bundles[0]})
     dsi_studio --action=atk \\
-        --thread_count=${task.cpus} \\
+        --thread_count=${task.cpus - 1} \\
         --source="${model}" \\
         --output="./" \\
         --tractography_atlas="${atlas}/human.tt.gz" \\

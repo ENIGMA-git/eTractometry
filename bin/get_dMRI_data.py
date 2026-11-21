@@ -21,20 +21,22 @@ def resample_to(dwi_path):
 
 
 def one_match(pattern, subject, label):
-    matches = [m for m in glob(pattern.format(subject=subject)) if os.path.exists(m)]
-    assert len(matches) <= 1, (
-        f"Expected one {label} file for subject {subject}, found: {matches}. "
-        f"Please use a more specific --{label.lower()}_format pattern."
-    )
+    # {sub} and {ses} split a session ID such as sub-01_ses-1; {ses} is empty for sub-01.
+    sub, _, ses = subject.partition("_")
+    matches = [m for m in glob(pattern.format(subject=subject, sub=sub, ses=ses)) if os.path.exists(m)]
+    if len(matches) > 1:
+        print(f"Skipping {label} for {subject}: {len(matches)} files match {matches}", file=sys.stderr)
+        return None
     return matches[0] if matches else None
 
 
 parser = argparse.ArgumentParser(description="Collect dMRI input file paths for a list of subjects.")
 parser.add_argument("--subject_IDs", required=True, help="Text file with subject IDs.")
-parser.add_argument("--dwi_format", required=True, help="DWI file pattern (use {subject}).")
+parser.add_argument("--dwi_format", required=True, help="DWI file pattern (use {subject}, or {sub} and {ses} for session IDs such as sub-01_ses-1).")
 parser.add_argument("--mask_format", default=None, help="Mask file pattern. Optional for .sz input.")
 parser.add_argument("--bvec_format", default=None, help="Bvec file pattern. Required for NIfTI, ignored for .sz.")
 parser.add_argument("--bval_format", default=None, help="Bval file pattern. Required for NIfTI, ignored for .sz.")
+parser.add_argument("--b_table_format", default=None, help="DSI-Studio b-table file pattern. Replaces --bval_format/--bvec_format when given, ignored for .sz.")
 parser.add_argument("--extra_maps_format", nargs="+", default=[], help="Extra subject-space metric map patterns as name=pattern pairs (use {subject}).")
 parser.add_argument("--output", required=True, help="Output CSV path.")
 args = parser.parse_args()
@@ -50,6 +52,7 @@ for subject in subjects:
         "mask": None,
         "bvec": None,
         "bval": None,
+        "b_table": None,
         "resample_to": None,
     }
 
@@ -65,12 +68,17 @@ for subject in subjects:
         row["mask"] = ""
 
     if is_sz:
-        row.update({"bvec": "", "bval": "", "resample_to": 0})
+        row.update({"bvec": "", "bval": "", "b_table": "", "resample_to": 0})
     else:
-        if args.bvec_format:
-            row["bvec"] = one_match(args.bvec_format, subject, "BVEC")
-        if args.bval_format:
-            row["bval"] = one_match(args.bval_format, subject, "BVAL")
+        # A b-table takes precedence over bval/bvec.
+        if args.b_table_format:
+            row.update({"bvec": "", "bval": "", "b_table": one_match(args.b_table_format, subject, "B_TABLE")})
+        else:
+            row["b_table"] = ""
+            if args.bvec_format:
+                row["bvec"] = one_match(args.bvec_format, subject, "BVEC")
+            if args.bval_format:
+                row["bval"] = one_match(args.bval_format, subject, "BVAL")
         if row["dwi"]:
             row["resample_to"] = resample_to(row["dwi"])
 
@@ -82,7 +90,7 @@ for subject in subjects:
 df = pd.DataFrame(rows)
 missing_df  = df[df.isna().any(axis=1)]
 # Extra maps are optional: subjects missing one are profiled without it.
-complete_df = df.dropna(subset=["dwi", "mask", "bvec", "bval", "resample_to"])
+complete_df = df.dropna(subset=["dwi", "mask", "bvec", "bval", "b_table", "resample_to"])
 
 missing_output = f"{os.path.splitext(args.output)[0]}_missing.csv"
 missing_df.to_csv(missing_output, index=False)
