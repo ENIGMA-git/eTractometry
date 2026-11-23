@@ -112,7 +112,7 @@ def main():
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     os.makedirs(f"{reports_dir}/logs", exist_ok=True)
-    os.environ["NXF_LOG_FILE"] = f"{reports_dir}/logs/nextflow_log_{timestamp}.txt"
+    os.environ["NXF_LOG_FILE"] = f"{reports_dir}/nextflow_log_{timestamp}.txt"
     os.environ["NXF_CACHE_DIR"] = f"{args.output_dir}/.nextflow_cache"
 
     ## main.nf reads atlas/ relative:
