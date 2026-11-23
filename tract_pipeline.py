@@ -56,7 +56,7 @@ def parse_args():
     missing = [f"--{name}" for name in ("dataset", "subjects", "dwi", "profile") if getattr(args, name) is None]
     if missing:
         parser.error(f"the following arguments are required: {', '.join(missing)}")
-    if not args.dwi.endswith((".nii", ".nii.gz", ".sz")):
+    if not args.dwi.endswith((".nii", ".nii.gz", ".nii*", ".sz")):
         parser.error("--dwi must be a NIfTI (.nii / .nii.gz) or DSI-Studio source (.sz) path.")
     if not args.dwi.endswith(".sz") and (args.mask is None or (args.b_table is None and None in (args.bval, args.bvec))):
         parser.error("--mask and either --b_table or --bval/--bvec are required for NIfTI input.")
