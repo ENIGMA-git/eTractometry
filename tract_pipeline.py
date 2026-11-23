@@ -113,7 +113,7 @@ def main():
 
     os.makedirs(f"{reports_dir}/logs", exist_ok=True)
     os.environ["NXF_SYNTAX_PARSER"] = "v2"
-    os.environ["NXF_LOG_FILE"] = f"{reports_dir}/nextflow_log_{timestamp}.txt"
+    os.environ["NXF_LOG_FILE"] = f"{reports_dir}/log_{timestamp}.txt"
     os.environ["NXF_CACHE_DIR"] = f"{args.output_dir}/.nextflow_cache"
 
     ## main.nf reads atlas/ relative:
@@ -144,7 +144,7 @@ def main():
 
     ## Launch Nextflow:
     nf_cmd = ["nextflow", "run", "main.nf", "-profile", args.profile, "-queue-size", str(args.n_parallel), "-ansi-log", str(args.ansi_log).lower(),
-        "-work-dir", f"{args.output_dir}/work", "-output-dir", f"{args.output_dir}/subjects", "-with-trace", f"{reports_dir}/tract_trace_{timestamp}.tsv"]
+        "-work-dir", f"{args.output_dir}/work", "-output-dir", f"{args.output_dir}/subjects", "-with-trace", f"{reports_dir}/trace_{timestamp}.tsv"]
     if not args.restart:
         nf_cmd.append("-resume")
     if args.queue is not None:
